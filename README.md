@@ -20,7 +20,13 @@ dsh plugin --profile dsh-tui add github:lide4144/dsh-tui-quota
 
 重启 dsh-tui 后输入 `/quota`。本机契约基准为 dsh-tui **0.17.0**、DSH **0.2.1-rc.3**、Node **22**；尚未做真实账号/交互界面的端到端验收。
 
-默认仅启用伴生 [dsh-tui-antigravity](https://github.com/lide4144/dsh-tui-antigravity) 的额度读取。**安装即允许读取该插件自己的 auth.json，并向固定 Google HTTPS 端点发送只读额度请求。** 不扫描 Pi、CLI、其他代理的凭据，不创建账号、不 onboard、不刷新 token。
+**安装即允许以下只读行为**（可用 `sources` 配置收窄或 `sources: []` 关闭）：
+
+- 读取伴生 [dsh-tui-antigravity](https://github.com/lide4144/dsh-tui-antigravity) 的 auth.json，查询 Google 额度端点。
+- 读取 dsh-tui 内置 `/auth` 登录文件（`$DSH_HOME/dsh-auth/credentials.json`）中 `openai-codex`、`anthropic` 的 access token，查询 ChatGPT / Anthropic 用量端点。
+- 通过 DSH 凭据服务解析 `KIMI_CODING_API_KEY`、`DEEPSEEK_API_KEY` 引用（与模型路由用的是同一份）。
+
+不扫描 Pi、Kimi CLI、Claude Code 或代理的凭据；**不刷新、不写入任何 token**（过期时显示“额度需登录”，下次用该模型对话后自动恢复），不创建账号、不 onboard。
 
 ## 使用
 
@@ -40,31 +46,33 @@ dsh plugin --profile dsh-tui add github:lide4144/dsh-tui-quota
 
 在 profile 的 `cordis.patch.yml` 为 bundle 行 `tui-quota` 设置完整 config（不要把密钥写入其中）：
 
+默认配置（不写即生效）等价于：
+
 ```yaml
 - id: tui-quota
   config:
     refreshMs: 300000
     sources:
-      - kind: antigravity
-        provider: antigravity
-      - kind: deepseek-balance
-        provider: deepseek-official
-        keyEnv: DEEPSEEK_API_KEY
-      - kind: moonshot-balance
-        provider: moonshot
-        keyEnv: MOONSHOT_API_KEY
+      - { kind: antigravity, provider: antigravity }
+      - { kind: codex-subscription, provider: openai-codex }
+      - { kind: claude-subscription, provider: anthropic }
+      - { kind: kimi-code, provider: kimi-coding, keyEnv: KIMI_CODING_API_KEY }
+      - { kind: deepseek-balance, provider: deepseek, keyEnv: DEEPSEEK_API_KEY, routes: [deepseek-official] }
+      # 可选：{ kind: moonshot-balance, provider: moonshot, keyEnv: MOONSHOT_API_KEY }
 ```
 
-`provider` 必须与你实际模型路由 ID 完全一致；不会猜别名、合并多账户或混用不同产品的凭据。余额 source 使用明确指定的环境变量，不读取全局 credentials.yaml。`sources: []` 可关闭全部数据源。
+`provider` / `routes` 必须与模型路由 ID 完全一致；同一订阅有多个路由名时用 `routes` 列出，不做模糊猜测。`keyEnv` 是凭据**引用名**（`.credentials.yaml` / 环境变量），配置里不接受明文密钥或自定义 URL。最多 8 个来源。
 
-| 来源 | 显示内容 | 边界 |
+| 来源 | 底栏显示 | 边界 |
 | --- | --- | --- |
-| Antigravity | 当前精确 model 的剩余百分比/重置时间；详情保留逐模型窗口 | 非公开稳定 Google API；默认读取 `$DSH_HOME/plugins/antigravity/auth.json`（未设时 `~/.dsh/...`），仅用 access/projectId，不使用 refresh。过期需先通过伴生模型插件刷新或重新登录 |
-| DeepSeek API | 官方货币余额，多币种详情逐项保留 | 不是 DeepSeek 网页订阅或次数。底栏仅展示第一项币种 |
-| Moonshot API | 官方 CNY 可用余额 | **不是 Kimi Code 订阅额度**，不可用 Moonshot key 冒充 Kimi Code OAuth |
-| Claude / GPT / Kimi Code | 本预览版未实现 | 不虚构次数、百分比或“健康”状态；未来需要各自明确授权的 adapter |
+| Antigravity | 当前模型**按思考强度**对应的运行时额度（如 `gemini-3.8-flash` + high → `gemini-3.8-flash-high`） | 非公开 Google API；路由映射与 dsh-tui-antigravity 一致，未知强度时显示同族最紧张的一档 |
+| ChatGPT / Codex | 5h 与 7d 窗口中较紧的一个 | 私有 `wham/usage` 接口；需先 `/auth login openai-codex` |
+| Claude 订阅 | 5h / 7d 账户窗口，以及当前模型族（opus / sonnet…）的专属周窗口 | 私有 `oauth/usage` 接口；需先 `/auth login anthropic`。无法识别模型族的专属窗口直接丢弃，不套到所有模型 |
+| Kimi Code | 有分子分母时显示 `74/100` | 逆向接口，可能失效；官方说明为 OAuth，**API key 能否查询未经实测**，失败时显示需登录/失败而不是 0 |
+| DeepSeek API | 官方货币余额 | 不是网页订阅或次数；底栏仅展示第一项币种 |
+| Moonshot API | 官方 CNY 可用余额 | **不是 Kimi Code 订阅额度** |
 
-不假设存在通用 `/v1/quota`。无法证明共享池的模型窗口不合并，当前模型有多个窗口时底栏显示其中最紧张的已披露窗口。没有分母就不显示 `28/45`；resetTime 已过时显示“待刷新”，不假设额度已恢复。
+不假设存在通用 `/v1/quota`。无法证明共享池的模型窗口不合并，当前模型有多个窗口时底栏显示其中最紧张的已披露窗口。只有上游给出分子分母（目前仅 Kimi Code）才显示 `74/100`，其余显示百分比；resetTime 已过时显示“待刷新”，不假设额度已恢复。
 
 ## 缓存与安全
 

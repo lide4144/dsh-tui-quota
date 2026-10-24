@@ -89,7 +89,7 @@ test('plugin isolates focused session, observes routing without mutation, and cl
   const result = await command.handler({ rawInput: '', agent });
   assert.equal(field.text, '额度未配置');
   assert.match(result.text, /antigravity\/a/);
-  assert.match(result.text, /尚未配置/);
+  assert.match(result.text, /尚未为该路由配置/);
   const call = { provider: 'other', model: 'b' };
   assert.equal(await listeners.get('agent/request')({ agent: { session: { id: 'child' } } }, async () => call), call);
   onChanged({ id: 'child' }, 'modelSelection', { next: { provider: 'bad', model: 'bad' } });
