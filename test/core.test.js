@@ -98,3 +98,31 @@ test('plugin isolates focused session, observes routing without mutation, and cl
   assert.equal(listeners.size, 0);
   assert.ok(releaseCount >= 4);
 });
+test('footer follows the route actually sent, not a stale projection', async () => {
+  const listeners = new Map(); const options = new Map(); let command, field;
+  const agent = { session: { id: 'main', requestHeader: () => ({ config: { provider: 'deepseek', model: 'deepseek-flash' } }) } };
+  const context = {
+    tuiStatus: { setField(_key, text) { field = text; return () => {}; } },
+    commands: { register(value) { command = value; return () => {}; } },
+    // Projection still remembers an older Claude selection.
+    sessionProjections: { snapshot() { return { values: { modelSelection: { lastUsed: { provider: 'anthropic', model: 'claude-opus-5-5' } } } }; },
+      onChanged() { return () => {}; } },
+    agents: { get() { return agent; } },
+    on(name, fn, opts) { listeners.set(name, fn); options.set(name, opts); return () => listeners.delete(name); },
+  };
+  // Isolated home: the credential read fails closed, so no real network request happens.
+  const savedHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = '/nonexistent/dsh-tui-quota-test';
+  const restoreHome = () => { if (savedHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = savedHome; };
+  const dispose = apply(context, { sources: [{ kind: 'antigravity', provider: 'antigravity' }] });
+  const result = await command.handler({ rawInput: '', agent });
+  assert.match(result.text, /deepseek\/deepseek-flash/);
+  assert.equal(field, '额度未配置');
+  assert.equal(options.get('agent/request')?.prepend, true);
+  // The outermost listener sees the TUI's rewritten route and passes it through untouched.
+  const rewritten = { provider: 'antigravity', model: 'gemini-3.8-flash', reasoningEffort: 'high' };
+  assert.equal(await listeners.get('agent/request')({ agent }, async () => rewritten), rewritten);
+  assert.notEqual(field, '额度未配置');
+  dispose();
+  restoreHome();
+});
