@@ -1,0 +1,8 @@
+- insert:
+    - id: tui-quota
+      name: dsh-tui-quota
+      inject:
+        - tuiStatus
+        - commands
+        - sessionProjections
+        - agents

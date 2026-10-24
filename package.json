@@ -1,0 +1,16 @@
+{
+  "name": "dsh-tui-quota",
+  "version": "0.1.0-dev.1",
+  "description": "Minimal current-provider quota footer and read-only quota details for dsh-tui",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": { ".": "./lib/index.js", "./cordis.patch.yml": "./cordis.patch.yml" },
+  "files": ["lib", "cordis.patch.yml", "README.md", "LICENSE"],
+  "engines": { "node": ">=22", "dsh": "0.2.1-rc.3" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "scripts": { "test": "node --test test/*.test.js", "check": "node --check lib/index.js && npm test" },
+  "repository": { "type": "git", "url": "https://github.com/lide4144/dsh-tui-quota.git" },
+  "homepage": "https://github.com/lide4144/dsh-tui-quota#readme",
+  "bugs": { "url": "https://github.com/lide4144/dsh-tui-quota/issues" },
+  "license": "MIT"
+}
