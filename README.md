@@ -30,7 +30,9 @@ dsh plugin --profile dsh-tui add github:lide4144/dsh-tui-quota
 /quota refresh  手动刷新所有已配置的数据源（遵守查询限流）
 ```
 
-底栏通过公开 `ctx.tuiStatus.setField` 插入 `left-tail`，最多 32 cells，沿用原生分隔/主题。可在 `/settings → statusBar.pluginFields` 隐藏；如已有固定 `pluginFieldsOrder`，需手动将新字段加入显示名单。
+底栏通过公开 `ctx.tuiStatus.setField` 插入 `left-tail`，最多 32 cells，沿用原生分隔/主题。未配置当前提供方时保留“额度未配置”，不再静默清掉字段。
+
+**命令能用但底栏不可见？** 先在 `/settings` 关闭“极简界面”（宿主在此模式强制隐藏插件字段），再检查 `statusBar.pluginFields` 已开启；如已有固定 `pluginFieldsOrder`，将 `quota:current` 加入显示名单。此为宿主可见性设置，插件不会擅自覆盖。
 
 会话选择来自 `modelSelection` 投影和 `tui/session-switched`，请求时还会观察最终配置，但不改变它。**启动时若没有公开焦点事件，不猜测活跃会话**，先显示 `额度 · /quota`；执行一次 `/quota` 即绑定。旧宿主的部分 `/model` 内存切换可能在下一次请求时才同步。后台子代理不能抢占焦点。
 
