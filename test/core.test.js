@@ -11,7 +11,7 @@ const snapshot = { provider: 'antigravity', kind: 'windows', status: 'ok', fetch
   { id: 'b', label: 'model-b', modelIds: ['model-b'], remainingFraction: 0.1 },
 ] };
 test('footer uses exact model, remaining percentages, conservative reset and unknowns', () => {
-  assert.match(footer(snapshot, { model: 'model-a' }, now).text, /82% \(1h\)/);
+  assert.match(footer(snapshot, { model: 'model-a' }, now).text, /82% ↺1h/);
   assert.equal(footer(snapshot, { model: 'model-b' }, now).tone, 'warning');
   assert.equal(footer(snapshot, { model: 'other' }, now).text, '额度未知');
   assert.equal(footer(snapshot, { model: 'model-a' }, now + 3600001).text, '额度待刷新');
@@ -85,13 +85,15 @@ test('plugin isolates focused session, observes routing without mutation, and cl
   };
   // No sources: this lifecycle test cannot read credentials or issue network I/O.
   const dispose = apply(context, { sources: [] });
-  assert.match(field.text, /quota/);
+  assert.match(field.text, /待首次请求/);
   const result = await command.handler({ rawInput: '', agent });
   assert.equal(field.text, '额度未配置');
   assert.match(result.text, /antigravity\/a/);
   assert.match(result.text, /尚未为该路由配置/);
   const call = { provider: 'other', model: 'b' };
-  assert.equal(await listeners.get('agent/request')({ agent: { session: { id: 'child' } } }, async () => call), call);
+  // A subagent child never takes over the footer.
+  assert.equal(await listeners.get('agent/request')({ agent: { session: { id: 'child', header: { origin: 'subagent', delegationDepth: 1 } } } }, async () => call), call);
+  assert.equal(field.text, '额度未配置');
   onChanged({ id: 'child' }, 'modelSelection', { next: { provider: 'bad', model: 'bad' } });
   listeners.get('tui/session-switched')({ sessionId: 'main' });
   dispose();
@@ -125,4 +127,29 @@ test('footer follows the route actually sent, not a stale projection', async () 
   assert.notEqual(field, '额度未配置');
   dispose();
   restoreHome();
+});
+
+test('footer binds to the first top-level request without /quota, and toasts on risky pace', async () => {
+  const listeners = new Map(); let field; const toasts = [];
+  const agent = { session: { id: 'main', header: {} } };
+  const context = {
+    tuiStatus: { setField(_key, text) { field = text; return () => {}; } },
+    commands: { register() { return () => {}; } },
+    sessionProjections: { snapshot() { return { values: {} }; }, onChanged() { return () => {}; } },
+    agents: { get() { return agent; } },
+    get(name) { return name === 'tuiToast' ? { show(text, options) { toasts.push({ text, options }); return true; } } : undefined; },
+    on(name, fn) { listeners.set(name, fn); return () => listeners.delete(name); },
+  };
+  const savedHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = '/nonexistent/dsh-tui-quota-test';
+  const dispose = apply(context, { sources: [] });
+  assert.match(field, /待首次请求/);
+  const call = { provider: 'kimi-coding', model: 'k3' };
+  assert.equal(await listeners.get('agent/request')({ agent }, async () => call), call);
+  assert.equal(field, '额度未配置');
+  // A different top-level session (e.g. after /resume) takes over.
+  await listeners.get('agent/request')({ agent: { session: { id: 'resumed', header: {} } } }, async () => ({ provider: 'x2', model: 'm' }));
+  assert.equal(field, '额度未配置');
+  dispose();
+  if (savedHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = savedHome;
 });

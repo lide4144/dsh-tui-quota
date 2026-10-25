@@ -52,6 +52,7 @@ dsh plugin --profile dsh-tui add github:lide4144/dsh-tui-quota
 - id: tui-quota
   config:
     refreshMs: 300000
+    warnings: true        # 额度预警 toast；false 关闭
     sources:
       - { kind: antigravity, provider: antigravity }
       - { kind: codex-subscription, provider: openai-codex }
@@ -76,7 +77,10 @@ dsh plugin --profile dsh-tui add github:lide4144/dsh-tui-quota
 
 ## 缓存与安全
 
-- 每次对话请求后约 20 秒自动刷新当前提供方（同一来源至少间隔 30 秒）；其余来源默认 5 分钟后台刷新，`refreshMs` 最短 1 分钟。普通查看优先读缓存，`/quota refresh` 立即刷新（10 秒本地节流）。每来源只有一个在途请求，10 秒超时，卸载即取消。
+- **无需手动 `/quota`**：底栏自动跟随最近发出请求的**顶层会话**（子代理请求被忽略）。dsh-tui 只把 `tui/*` 会话事件交给声明了 DecisionEvents 的 Component，普通插件拿不到“当前会话”，所以以请求为准；定时任务/goal 在别的顶层会话后台发请求时，底栏会暂时跟过去。
+- 刷新节奏（参考 pi-quotas）：每次请求后约 20 秒刷新当前提供方；会话活跃（10 分钟内有请求）期间至少每 60 秒刷新一次，Claude 订阅接口限流严格，间隔 5 分钟；空闲时只做 `refreshMs`（默认 5 分钟）后台刷新。`/quota refresh` 立即刷新（10 秒本地节流）。每来源只有一个在途请求，10 秒超时，卸载即取消。
+- **额度预警**：按“已用比例 ÷ 窗口已过时间”外推到重置时刻（算法移植自 pi-quotas，MIT），预计超额时弹 toast；不知道窗口长度时退回绝对阈值（已用 80% / 90% / 100%）。同一窗口仅在升级时立即提醒，否则 warning 冷却 1 小时、告急/耗尽冷却 15 分钟。只针对当前路由的窗口。
+- 底栏格式：`5h ▰▰▰▱▱ 62% ↺2h10m`（窗口标签 + 剩余 + 重置倒计时，取当前模型最紧张的窗口）。
 - 当前模型取自会话请求头里**实际发出**的路由：dsh-tui 的 `/model` 切换只存在内存，切换后发一条消息底栏才会跟上。
 - 成功结果只存内存；失败保留旧值并标记 `~` / 缓存，未知不当作零。
 - `429` 的重试时间仅用于**额度查询**，不声称生成请求也限流；尊重披露的 Retry-After，未披露时用本地重试退避，不伪造账号重置时间。
